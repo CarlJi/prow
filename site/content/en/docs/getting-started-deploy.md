@@ -22,12 +22,12 @@ Repository permissions:
 * Actions: Read-Only (Only needed when using the merge automation `tide`)
 * Administration: Read-Only (Required to fetch teams and collaborators, Read & write needed when using branch protection automation)
 * Checks: Read-Only (Only needed when using the merge automation `tide`)
+* Commit statuses: Read & write
 * Contents: Read (Read & write needed when using the merge automation `tide`)
 * Issues: Read & write
 * Metadata: Read-Only
 * Pull Requests: Read & write
 * Projects: Admin when using the `projects` plugin, none otherwise
-* Commit statuses: Read & write
 
 Organization permissions:
 
@@ -107,6 +107,15 @@ $ kubectl create clusterrolebinding cluster-admin-binding-"<CLUSTER_USER>" \
 
 There are [relevant docs on Kubernetes Authentication](https://kubernetes.io/docs/reference/access-authn-authz/authentication/#authentication-strategies) that may help if neither of the above work.
 
+### Create the namespace
+
+Kubernetes objects that are required for Prow will be created and Prow will be deployed in the `prow` namespace of the cluster.
+Create the namespace before you proceed further.
+
+```sh
+$ kubectl create namespace prow
+```
+
 ### Create the GitHub secrets
 
 You will need two secrets to talk to GitHub. The `hmac-token` is the token that
@@ -146,7 +155,7 @@ Regardless of which object storage you choose, the below adjustments are always 
 
 ### Add the prow components to the cluster
 
-First you need to create the ProwJob custom resource:
+First you need to create the [ProwJob custom resource](https://github.com/kubernetes-sigs/prow/blob/main/config/prow/cluster/prowjob-crd/prowjob_customresourcedefinition.yaml):
 
 ```
 kubectl apply --server-side=true -f config/prow/cluster/prowjob-crd/prowjob_customresourcedefinition.yaml
@@ -267,14 +276,21 @@ By default, Prow doesn't support Azure blob storage for storing job metadata, lo
 However, with [MinIO](https://github.com/minio/minio) it is possible to keep artifacts in
 Azure blob storage as one would in GCS or S3. MinIO Gateway adds Amazon S3 compatibility
 to Azure Blob Storage. As such, we can mimic S3 storage for Prow, while actually pushing
-artifacts to the Azure storage. To run MinIO in gateway mode with Azure being the backend
+artifacts to the Azure storage. 
+
+> MinIO gateway was [deprecated](https://blog.min.io/deprecation-of-the-minio-gateway/) in February 2022 and was removed after the **RELEASE.2022-04-29T01-27-09Z** release.
+> MinIO gateway for Azure was still functinal as of December 2024 using this release but may stop working in the future.
+
+To run MinIO in gateway mode with Azure being the backend
 storage, we need to pass the following arguments to MinIO deployment:
 
 ```yaml
-  args:
-  - gateway # mode of MinIO
-  - azure # storage provider
-  - --console-address=:"<<CHANGE_ME_MINIO_CONSOLE_PORT>>" # predictable port number of the web console. E.g. 33333
+  - name: minio
+    image: minio/minio:RELEASE.2022-04-29T01-27-09Z
+    args:
+    - gateway # mode of MinIO
+    - azure # storage provider
+    - --console-address=:"<<CHANGE_ME_MINIO_CONSOLE_PORT>>" # predictable port number of the web console. E.g. 33333
 ```
 
 In order to configure the Azure storage, follow the following steps:
