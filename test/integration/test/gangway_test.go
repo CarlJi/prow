@@ -492,13 +492,14 @@ func TestGangwayBulkJobStatusChange(t *testing.T) {
 			ctx := context.Background()
 			ctx = c.EmbedProjectNumber(ctx)
 			cleanup(t, ctx)
+			jobExecutions := []*gangway.JobExecution{}
 			for i := 0; i < tt.count; i++ {
 				jobExecution, err := c.GRPC.CreateJobExecution(ctx, tt.creationMsg)
 				if err != nil {
 					t.Fatalf("Failed to create job execution: %v", err)
 				}
 				fmt.Println(jobExecution)
-
+				jobExecutions = append(jobExecutions, jobExecution)
 				// We expect the job to be pending.
 				timeout := 120 * time.Second
 				pollInterval := 500 * time.Millisecond
@@ -515,24 +516,22 @@ func TestGangwayBulkJobStatusChange(t *testing.T) {
 			}
 			t.Logf("Created %d jobs", len(pjs.Items))
 
-			jobsAffected, err := c.GRPC.BulkJobStatusChange(ctx, tt.bulkMsg)
+			_, err = c.GRPC.BulkJobStatusChange(ctx, tt.bulkMsg)
 			if tt.expectedErr != nil {
 				if !errors.Is(err, tt.expectedErr) {
 					t.Fatalf("Expected error %v, got %v", tt.expectedErr, err)
 				}
 			} else {
-				if jobsAffected.Count != int32(tt.expectedCount) {
-					t.Fatalf("Expected %d jobs to be affected, got %d", tt.expectedCount, jobsAffected.Count)
-				}
-				for _, job := range jobsAffected.JobExecutions {
-					if job.JobStatus != gangway.JobExecutionStatus_ABORTED {
-						t.Fatalf("Expected job status to be %q, got %q", gangway.JobExecutionStatus_ABORTED, job.JobStatus)
+				for _, jobExecution := range jobExecutions {
+					timeout := 120 * time.Second
+					pollInterval := 500 * time.Millisecond
+					expectedStatus := gangway.JobExecutionStatus_ABORTED
+					if tt.expectedCount == 0 {
+						expectedStatus = gangway.JobExecutionStatus_PENDING
 					}
-					if job.JobType != tt.creationMsg.JobExecutionType {
-						t.Fatalf("Expected job type to be %q, got %q", tt.creationMsg.JobExecutionType, job.JobType)
-					}
-					if job.JobName != tt.creationMsg.JobName {
-						t.Fatalf("Expected job name to be %q, got %q", tt.creationMsg.JobName, job.JobName)
+
+					if err := c.WaitForJobExecutionStatus(ctx, jobExecution.Id, pollInterval, timeout, expectedStatus); err != nil {
+						t.Fatal(err)
 					}
 				}
 			}
@@ -577,4 +576,129 @@ func getProwJobs(t *testing.T, ctx context.Context) *prowjobv1.ProwJobList {
 	pjList := &prowjobv1.ProwJobList{}
 	kubeClient.List(ctx, pjList, ctrlruntimeclient.MatchingLabels{})
 	return pjList
+}
+
+func TestGangwayListJobs(t *testing.T) {
+	// Setup set of ProwJobs to list
+	c, err := gangwayGoogleClient.NewInsecure(":32000", "123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	ctx := context.Background()
+	ctx = c.EmbedProjectNumber(ctx)
+
+	// Ensure PENDING jobs are at the end of the list
+	jobs := []struct {
+		creationMsg  *gangway.CreateJobExecutionRequest
+		wantedStatus gangway.JobExecutionStatus
+	}{
+		{
+			wantedStatus: gangway.JobExecutionStatus_ABORTED,
+			creationMsg: &gangway.CreateJobExecutionRequest{
+				JobName:          "sleep-periodic",
+				JobExecutionType: gangway.JobExecutionType_PERIODIC,
+			},
+		},
+		{
+			wantedStatus: gangway.JobExecutionStatus_PENDING,
+			creationMsg: &gangway.CreateJobExecutionRequest{
+				JobName:          "sleep-periodic",
+				JobExecutionType: gangway.JobExecutionType_PERIODIC,
+			},
+		},
+		{
+			wantedStatus: gangway.JobExecutionStatus_PENDING,
+			creationMsg: &gangway.CreateJobExecutionRequest{
+				JobName:          "sleep-postsubmit",
+				JobExecutionType: gangway.JobExecutionType_POSTSUBMIT,
+				Refs: &gangway.Refs{
+					Org:     "org1",
+					Repo:    "repo1",
+					BaseRef: "master",
+					BaseSha: "thi5-1s-n0t-a-r34l-sh4",
+				},
+			},
+		},
+	}
+	for _, job := range jobs {
+		jobExecution, err := c.GRPC.CreateJobExecution(ctx, job.creationMsg)
+		if err != nil {
+			t.Fatalf("Failed to create job execution: %v", err)
+		}
+		// We expect the job to be pending.
+		timeout := 120 * time.Second
+		pollInterval := 500 * time.Millisecond
+		expectedStatus := gangway.JobExecutionStatus_PENDING
+		if err := c.WaitForJobExecutionStatus(ctx, jobExecution.Id, pollInterval, timeout, expectedStatus); err != nil {
+			t.Fatal(err)
+		}
+		if job.wantedStatus != gangway.JobExecutionStatus_PENDING {
+			_, err = c.GRPC.BulkJobStatusChange(ctx, &gangway.BulkJobStatusChangeRequest{
+				JobStatusChange: &gangway.JobStatusChange{
+					Current: gangway.JobExecutionStatus_PENDING,
+					Desired: job.wantedStatus,
+				},
+			})
+			if err != nil {
+				t.Fatalf("Failed to change job execution state: %v", err)
+			}
+			if err := c.WaitForJobExecutionStatus(ctx, jobExecution.Id, pollInterval, timeout, job.wantedStatus); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	tests := []struct {
+		name          string
+		expectedCount int
+		listMsg       *gangway.ListJobExecutionsRequest
+	}{
+		{
+			name:          "all",
+			expectedCount: 3,
+			listMsg:       &gangway.ListJobExecutionsRequest{},
+		},
+		{
+			name:          "by-name",
+			expectedCount: 1,
+			listMsg: &gangway.ListJobExecutionsRequest{
+				JobName: "sleep-postsubmit",
+			},
+		},
+		{
+			name:          "by-status",
+			expectedCount: 2,
+			listMsg: &gangway.ListJobExecutionsRequest{
+				Status: gangway.JobExecutionStatus_PENDING,
+			},
+		},
+		{
+			name:          "none",
+			expectedCount: 0,
+			listMsg: &gangway.ListJobExecutionsRequest{
+				JobName: "does-not-exists",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			list, err := c.GRPC.ListJobExecutions(ctx, tt.listMsg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pjs := getProwJobs(t, ctx)
+			for _, pj := range pjs.Items {
+				t.Logf("ProwJob: %s,  %s", pj.Name, pj.Status.State)
+			}
+			if len(list.JobExecution) != tt.expectedCount {
+				t.Fatalf("Expected %d Jobs, got %d", tt.expectedCount, len(list.JobExecution))
+			}
+		})
+	}
+
+	cleanup(t, ctx)
 }

@@ -46,7 +46,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/diff"
 	"k8s.io/apimachinery/pkg/util/sets"
-	utilpointer "k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	fakectrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	prowapi "sigs.k8s.io/prow/pkg/apis/prowjobs/v1"
@@ -277,7 +277,7 @@ func TestAccumulateBatch(t *testing.T) {
 
 			inrepoconfig := config.InRepoConfig{}
 			if test.prowYAMLGetter != nil {
-				inrepoconfig.Enabled = map[string]*bool{"*": utilpointer.Bool(true)}
+				inrepoconfig.Enabled = map[string]*bool{"*": ptr.To(true)}
 			}
 			cfg := func() *config.Config {
 				return &config.Config{
@@ -700,13 +700,14 @@ type fgc struct {
 	err  error
 	lock sync.Mutex
 
-	prs        map[string][]PullRequest
-	refs       map[string]string
-	merged     int
-	setStatus  bool
-	statuses   map[string]github.Status
-	mergeErrs  map[int]error
-	queryCalls int
+	prs           map[string][]PullRequest
+	refs          map[string]string
+	merged        int
+	setStatus     bool
+	statuses      map[string]github.Status
+	mergeErrs     map[int]error
+	queryCalls    int
+	issueComments map[int][]github.IssueComment
 
 	expectedSHA          string
 	skipExpectedShaCheck bool
@@ -769,7 +770,7 @@ func (f *fgc) CreateStatus(org, repo, ref string, s github.Status) error {
 		if f.statuses == nil {
 			f.statuses = map[string]github.Status{}
 		}
-		f.statuses[org+"/"+repo+"/"+ref] = s
+		f.statuses[org+"/"+repo+"/"+ref+"/"+s.Context] = s
 		f.setStatus = true
 		return nil
 	}
@@ -810,6 +811,25 @@ func (f *fgc) GetPullRequestChanges(org, repo string, number int) ([]github.Pull
 			},
 		},
 		nil
+}
+
+func (f *fgc) ListIssueComments(org, repo string, number int) ([]github.IssueComment, error) {
+	return f.issueComments[number], nil
+}
+
+func (f *fgc) BotUserChecker() (func(candidate string) bool, error) {
+	return func(candidate string) bool { return candidate == "foo-bot" }, nil
+}
+
+func (f *fgc) DeleteComment(org, repo string, id int) error {
+	for issue, ics := range f.issueComments {
+		for j := len(ics) - 1; j >= 0; j-- {
+			if ics[j].ID == id {
+				f.issueComments[issue] = append(ics[:j], ics[j+1:]...)
+			}
+		}
+	}
+	return nil
 }
 
 // TestDividePool ensures that subpools returned by dividePool satisfy a few
@@ -3293,7 +3313,7 @@ func TestPresubmitsByPull(t *testing.T) {
 				"foo/bar": {{Reporter: config.Reporter{Context: "wrong-repo"}, AlwaysRun: true}},
 			})
 			if tc.prowYAMLGetter != nil {
-				cfg.InRepoConfig.Enabled = map[string]*bool{"*": utilpointer.Bool(true)}
+				cfg.InRepoConfig.Enabled = map[string]*bool{"*": ptr.To(true)}
 				cfg.ProwYAMLGetterWithDefaults = tc.prowYAMLGetter
 			}
 			cfgAgent := &config.Agent{}
@@ -3865,7 +3885,7 @@ func TestPresubmitsForBatch(t *testing.T) {
 
 			inrepoconfig := config.InRepoConfig{}
 			if tc.prowYAMLGetter != nil {
-				inrepoconfig.Enabled = map[string]*bool{"*": utilpointer.Bool(true)}
+				inrepoconfig.Enabled = map[string]*bool{"*": ptr.To(true)}
 			}
 			cfg := func() *config.Config {
 				return &config.Config{
