@@ -30,7 +30,7 @@ import (
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/util/diff"
 	"k8s.io/apimachinery/pkg/util/sets"
-	utilpointer "k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/yaml"
 
 	"sigs.k8s.io/prow/pkg/bugzilla"
@@ -1462,7 +1462,7 @@ func TestConfigUpdaterResolve(t *testing.T) {
 				Maps: map[string]ConfigMapSpec{"map": {
 					Name:          "name",
 					Key:           "key",
-					GZIP:          utilpointer.Bool(true),
+					GZIP:          ptr.To(true),
 					ClusterGroups: []string{"some-group", "another-group"}},
 				},
 			},
@@ -1470,7 +1470,7 @@ func TestConfigUpdaterResolve(t *testing.T) {
 				Maps: map[string]ConfigMapSpec{"map": {
 					Name: "name",
 					Key:  "key",
-					GZIP: utilpointer.Bool(true),
+					GZIP: ptr.To(true),
 					Clusters: map[string][]string{
 						"cluster-a": {"namespace-a"},
 						"cluster-b": {"namespace-b"},
@@ -2354,5 +2354,65 @@ func TestMergeFrom(t *testing.T) {
 		if diff := cmp.Diff(tc.expected, tc.in); !tc.errorExpected && diff != "" {
 			t.Errorf("expected config differs from expected: %s", diff)
 		}
+	}
+}
+
+func TestValidatePluginsDupes(t *testing.T) {
+	testCases := []struct {
+		name           string
+		plugins        Plugins
+		expectedErrMsg string
+	}{
+		{
+			name: "no dupes",
+			plugins: Plugins{
+				"org": OrgPlugins{
+					Plugins: []string{"approve", "lgtm"},
+				},
+				"org/repo": OrgPlugins{
+					Plugins: []string{"woof"},
+				},
+				"org/another-repo": OrgPlugins{
+					Plugins: []string{"assign"},
+				},
+				"another-org": OrgPlugins{
+					Plugins: []string{"approve", "assign", "woof"},
+				},
+			},
+		},
+		{
+			name: "dupes found",
+			plugins: Plugins{
+				"org": OrgPlugins{
+					Plugins: []string{"approve", "lgtm"},
+				},
+				"org/repo": OrgPlugins{
+					Plugins: []string{"approve", "woof"},
+				},
+			},
+			expectedErrMsg: "plugins [approve] are duplicated for repo and org",
+		},
+		{
+			name: "no dupes due to excluded repo",
+			plugins: Plugins{
+				"org": OrgPlugins{
+					Plugins:       []string{"approve", "lgtm"},
+					ExcludedRepos: []string{"repo"},
+				},
+				"org/repo": OrgPlugins{
+					Plugins: []string{"approve", "woof"},
+				},
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validatePluginsDupes(tc.plugins)
+			if err != nil {
+				if diff := cmp.Diff(tc.expectedErrMsg, err.Error()); diff != "" {
+					t.Fatalf("expected error differs from result: %s", diff)
+				}
+			}
+		})
 	}
 }

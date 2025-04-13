@@ -21,7 +21,7 @@ import (
 	"reflect"
 	"testing"
 
-	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	coreapi "k8s.io/api/core/v1"
 	prowapi "sigs.k8s.io/prow/pkg/apis/prowjobs/v1"
 )
@@ -1273,7 +1273,7 @@ func TestUtilityConfigValidation(t *testing.T) {
 
 func TestJobBase_HasPipelineRunSpec(t *testing.T) {
 	type fields struct {
-		PipelineRunSpec       *pipelinev1beta1.PipelineRunSpec
+		PipelineRunSpec       *pipelinev1.PipelineRunSpec
 		TektonPipelineRunSpec *prowapi.TektonPipelineRunSpec
 	}
 	tests := []struct {
@@ -1286,7 +1286,7 @@ func TestJobBase_HasPipelineRunSpec(t *testing.T) {
 	}, {
 		name: "PipelineRunSpec set",
 		fields: fields{
-			PipelineRunSpec: &pipelinev1beta1.PipelineRunSpec{},
+			PipelineRunSpec: &pipelinev1.PipelineRunSpec{},
 		},
 		want: true,
 	}, {
@@ -1299,16 +1299,16 @@ func TestJobBase_HasPipelineRunSpec(t *testing.T) {
 		name: "TektonPipelineRunSpec.V1VBeta1 set",
 		fields: fields{
 			TektonPipelineRunSpec: &prowapi.TektonPipelineRunSpec{
-				V1Beta1: &pipelinev1beta1.PipelineRunSpec{},
+				V1Beta1: &pipelinev1.PipelineRunSpec{},
 			},
 		},
 		want: true,
 	}, {
 		name: "both set",
 		fields: fields{
-			PipelineRunSpec: &pipelinev1beta1.PipelineRunSpec{},
+			PipelineRunSpec: &pipelinev1.PipelineRunSpec{},
 			TektonPipelineRunSpec: &prowapi.TektonPipelineRunSpec{
-				V1Beta1: &pipelinev1beta1.PipelineRunSpec{},
+				V1Beta1: &pipelinev1.PipelineRunSpec{},
 			},
 		},
 		want: true,
@@ -1328,13 +1328,13 @@ func TestJobBase_HasPipelineRunSpec(t *testing.T) {
 
 func TestJobBase_GetPipelineRunSpec(t *testing.T) {
 	type fields struct {
-		PipelineRunSpec       *pipelinev1beta1.PipelineRunSpec
+		PipelineRunSpec       *pipelinev1.PipelineRunSpec
 		TektonPipelineRunSpec *prowapi.TektonPipelineRunSpec
 	}
 	tests := []struct {
 		name    string
 		fields  fields
-		want    *pipelinev1beta1.PipelineRunSpec
+		want    *pipelinev1.PipelineRunSpec
 		wantErr bool
 	}{
 		{
@@ -1348,18 +1348,22 @@ func TestJobBase_GetPipelineRunSpec(t *testing.T) {
 		{
 			name: "only PipelineRunSpec set",
 			fields: fields{
-				PipelineRunSpec: &pipelinev1beta1.PipelineRunSpec{
-					ServiceAccountName: "robot",
-					PipelineSpec: &pipelinev1beta1.PipelineSpec{
-						Tasks: []pipelinev1beta1.PipelineTask{{Name: "implicit git resource", TaskRef: &pipelinev1beta1.TaskRef{Name: "abc"}}},
+				PipelineRunSpec: &pipelinev1.PipelineRunSpec{
+					TaskRunTemplate: pipelinev1.PipelineTaskRunTemplate{
+						ServiceAccountName: "robot",
+					},
+					PipelineSpec: &pipelinev1.PipelineSpec{
+						Tasks: []pipelinev1.PipelineTask{{Name: "implicit git resource", TaskRef: &pipelinev1.TaskRef{Name: "abc"}}},
 					},
 				},
 				TektonPipelineRunSpec: nil,
 			},
-			want: &pipelinev1beta1.PipelineRunSpec{
-				ServiceAccountName: "robot",
-				PipelineSpec: &pipelinev1beta1.PipelineSpec{
-					Tasks: []pipelinev1beta1.PipelineTask{{Name: "implicit git resource", TaskRef: &pipelinev1beta1.TaskRef{Name: "abc"}}},
+			want: &pipelinev1.PipelineRunSpec{
+				TaskRunTemplate: pipelinev1.PipelineTaskRunTemplate{
+					ServiceAccountName: "robot",
+				},
+				PipelineSpec: &pipelinev1.PipelineSpec{
+					Tasks: []pipelinev1.PipelineTask{{Name: "implicit git resource", TaskRef: &pipelinev1.TaskRef{Name: "abc"}}},
 				},
 			},
 		},
@@ -1368,43 +1372,53 @@ func TestJobBase_GetPipelineRunSpec(t *testing.T) {
 			fields: fields{
 				PipelineRunSpec: nil,
 				TektonPipelineRunSpec: &prowapi.TektonPipelineRunSpec{
-					V1Beta1: &pipelinev1beta1.PipelineRunSpec{
-						ServiceAccountName: "robot",
-						PipelineSpec: &pipelinev1beta1.PipelineSpec{
-							Tasks: []pipelinev1beta1.PipelineTask{{Name: "implicit git resource", TaskRef: &pipelinev1beta1.TaskRef{Name: "abc"}}},
+					V1Beta1: &pipelinev1.PipelineRunSpec{
+						TaskRunTemplate: pipelinev1.PipelineTaskRunTemplate{
+							ServiceAccountName: "robot",
+						},
+						PipelineSpec: &pipelinev1.PipelineSpec{
+							Tasks: []pipelinev1.PipelineTask{{Name: "implicit git resource", TaskRef: &pipelinev1.TaskRef{Name: "abc"}}},
 						},
 					},
 				},
 			},
-			want: &pipelinev1beta1.PipelineRunSpec{
-				ServiceAccountName: "robot",
-				PipelineSpec: &pipelinev1beta1.PipelineSpec{
-					Tasks: []pipelinev1beta1.PipelineTask{{Name: "implicit git resource", TaskRef: &pipelinev1beta1.TaskRef{Name: "abc"}}},
+			want: &pipelinev1.PipelineRunSpec{
+				TaskRunTemplate: pipelinev1.PipelineTaskRunTemplate{
+					ServiceAccountName: "robot",
+				},
+				PipelineSpec: &pipelinev1.PipelineSpec{
+					Tasks: []pipelinev1.PipelineTask{{Name: "implicit git resource", TaskRef: &pipelinev1.TaskRef{Name: "abc"}}},
 				},
 			},
 		},
 		{
 			name: "PipelineRunSpec and TektonPipelineRunSpec set",
 			fields: fields{
-				PipelineRunSpec: &pipelinev1beta1.PipelineRunSpec{
-					ServiceAccountName: "robot",
-					PipelineSpec: &pipelinev1beta1.PipelineSpec{
-						Tasks: []pipelinev1beta1.PipelineTask{{Name: "implicit git resource", TaskRef: &pipelinev1beta1.TaskRef{Name: "abc"}}},
+				PipelineRunSpec: &pipelinev1.PipelineRunSpec{
+					TaskRunTemplate: pipelinev1.PipelineTaskRunTemplate{
+						ServiceAccountName: "robot",
+					},
+					PipelineSpec: &pipelinev1.PipelineSpec{
+						Tasks: []pipelinev1.PipelineTask{{Name: "implicit git resource", TaskRef: &pipelinev1.TaskRef{Name: "abc"}}},
 					},
 				},
 				TektonPipelineRunSpec: &prowapi.TektonPipelineRunSpec{
-					V1Beta1: &pipelinev1beta1.PipelineRunSpec{
-						ServiceAccountName: "robot",
-						PipelineSpec: &pipelinev1beta1.PipelineSpec{
-							Tasks: []pipelinev1beta1.PipelineTask{{Name: "implicit git resource", TaskRef: &pipelinev1beta1.TaskRef{Name: "def"}}},
+					V1Beta1: &pipelinev1.PipelineRunSpec{
+						TaskRunTemplate: pipelinev1.PipelineTaskRunTemplate{
+							ServiceAccountName: "robot",
+						},
+						PipelineSpec: &pipelinev1.PipelineSpec{
+							Tasks: []pipelinev1.PipelineTask{{Name: "implicit git resource", TaskRef: &pipelinev1.TaskRef{Name: "def"}}},
 						},
 					},
 				},
 			},
-			want: &pipelinev1beta1.PipelineRunSpec{
-				ServiceAccountName: "robot",
-				PipelineSpec: &pipelinev1beta1.PipelineSpec{
-					Tasks: []pipelinev1beta1.PipelineTask{{Name: "implicit git resource", TaskRef: &pipelinev1beta1.TaskRef{Name: "def"}}},
+			want: &pipelinev1.PipelineRunSpec{
+				TaskRunTemplate: pipelinev1.PipelineTaskRunTemplate{
+					ServiceAccountName: "robot",
+				},
+				PipelineSpec: &pipelinev1.PipelineSpec{
+					Tasks: []pipelinev1.PipelineTask{{Name: "implicit git resource", TaskRef: &pipelinev1.TaskRef{Name: "def"}}},
 				},
 			},
 		}}
@@ -1423,5 +1437,68 @@ func TestJobBase_GetPipelineRunSpec(t *testing.T) {
 				t.Errorf("JobBase.GetPipelineRunSpec() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestPeriodicsMatchingExtraRefs(t *testing.T) {
+	c := &Config{
+		JobConfig: JobConfig{
+			PresubmitsStatic: map[string][]Presubmit{
+				"r1": {{
+					JobBase: JobBase{
+						Name: "a",
+						UtilityConfig: UtilityConfig{
+							ExtraRefs: []prowapi.Refs{
+								{Org: "o", Repo: "r1"},
+							},
+						},
+					}},
+				},
+			},
+			PostsubmitsStatic: map[string][]Postsubmit{
+				"r1": {{JobBase: JobBase{Name: "b"}}},
+			},
+			Periodics: []Periodic{
+				{
+					JobBase: JobBase{
+						Name: "c",
+						UtilityConfig: UtilityConfig{
+							ExtraRefs: []prowapi.Refs{
+								{Org: "o", Repo: "r1"},
+							},
+						},
+					},
+				},
+				{JobBase: JobBase{Name: "d"}},
+				{
+					JobBase: JobBase{
+						Name: "e",
+						UtilityConfig: UtilityConfig{
+							ExtraRefs: []prowapi.Refs{
+								{Org: "o", Repo: "r1"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	expected := []string{"c", "e"}
+	actual := c.PeriodicsMatchingExtraRefs("o", "r1")
+	if len(actual) != len(expected) {
+		t.Fatalf("Wrong number of jobs. Got %v, expected %v", actual, expected)
+	}
+	for _, j1 := range expected {
+		found := false
+		for _, j2 := range actual {
+			if j1 == j2.Name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Did not find job %s in output", j1)
+		}
 	}
 }

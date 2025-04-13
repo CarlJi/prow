@@ -57,12 +57,6 @@ update-go-deps:
 verify-go-deps:
 	hack/make-rules/verify/go-deps.sh
 ################################################################################
-# ================================== Dependencies ===================================
-# python deps
-ensure-py-requirements3:
-	hack/run-in-python-container.sh pip3 install -r requirements3.txt
-.PHONY: ensure-py-requirements3
-################################################################################
 # ================================== Linting ===================================
 # run linters, ensure generated code, etc.
 .PHONY: verify
@@ -97,7 +91,7 @@ update-codegen:
 verify-codegen:
 	hack/make-rules/verify/codegen.sh
 .PHONY: verify-boilerplate
-verify-boilerplate: ensure-py-requirements3
+verify-boilerplate:
 	hack/make-rules/verify/boilerplate.sh
 #################################################################################
 # Build and push specific variables.
@@ -106,22 +100,22 @@ PROW_IMAGE ?=
 
 .PHONY: push-images
 push-images:
-	hack/make-rules/go-run/arbitrary.sh run ./hack/prowimagebuilder --ko-docker-repo="${REGISTRY}" --push=true
+	hack/make-rules/go-run/arbitrary.sh run ./hack/prowimagebuilder --prow-images-file=./.prow-images.yaml --ko-docker-repo="${REGISTRY}" --push=true
 
 .PHONY: build-images
 build-images:
-	hack/make-rules/go-run/arbitrary.sh run ./hack/prowimagebuilder --ko-docker-repo="ko.local" --push=false
+	hack/make-rules/go-run/arbitrary.sh run ./hack/prowimagebuilder --prow-images-file=./.prow-images.yaml --ko-docker-repo="ko.local" --push=false
 
 .PHONY: push-single-image
 push-single-image:
-	hack/make-rules/go-run/arbitrary.sh run ./hack/prowimagebuilder --ko-docker-repo="${REGISTRY}" --push=true --image=${PROW_IMAGE}
+	hack/make-rules/go-run/arbitrary.sh run ./hack/prowimagebuilder --prow-images-file=./.prow-images.yaml --ko-docker-repo="${REGISTRY}" --push=true --image=${PROW_IMAGE}
 
 .PHONY: build-single-image
 build-single-image:
-	hack/make-rules/go-run/arbitrary.sh run ./hack/prowimagebuilder --ko-docker-repo="ko.local" --push=false --image=${PROW_IMAGE}
+	hack/make-rules/go-run/arbitrary.sh run ./hack/prowimagebuilder --prow-images-file=./.prow-images.yaml --ko-docker-repo="ko.local" --push=false --image=${PROW_IMAGE}
 
 .PHONY: build-tarball
 build-tarball:
 # use --ko-docker-repo="something.not.exist" as ko skips writing `.tar` file if
 # it's `ko.local.
-	hack/make-rules/go-run/arbitrary.sh run ./hack/prowimagebuilder --ko-docker-repo="something.not.exist" --push=false --image=${PROW_IMAGE}
+	hack/make-rules/go-run/arbitrary.sh run ./hack/prowimagebuilder --prow-images-file=./.prow-images.yaml --ko-docker-repo="something.not.exist" --push=false --image=${PROW_IMAGE}

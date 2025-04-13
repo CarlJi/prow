@@ -797,7 +797,7 @@ func TestGetMessage(t *testing.T) {
 	want := `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
 
 This pull-request has been approved by: *<a href="REFERENCE" title="Approved">Bill</a>*
-**Once this PR has been reviewed and has the lgtm label**, please assign [alice](https://github.com/alice) for approval. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+**Once this PR has been reviewed and has the lgtm label**, please assign [alice](https://github.com/alice) for approval. For more information see [the Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
 
 *No associated issue*. Update pull-request body to add a reference to an issue, or get approval with ` + "`/approve no-issue`" + `
 
@@ -836,7 +836,7 @@ Approvers can cancel approval by writing ` + "`/approve cancel`" + ` in a commen
 	want = `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
 
 This pull-request has been approved by: *<a href="REFERENCE" title="Approved">Bill</a>*
-**Once this PR has been reviewed and has the lgtm label**, please assign [alice](https://github.com/alice), [bob](https://github.com/bob) for approval. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+**Once this PR has been reviewed and has the lgtm label**, please assign [alice](https://github.com/alice), [bob](https://github.com/bob) for approval. For more information see [the Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
 
 *No associated issue*. Update pull-request body to add a reference to an issue, or get approval with ` + "`/approve no-issue`" + `
 
@@ -902,6 +902,44 @@ Approvers can cancel approval by writing ` + "`/approve cancel`" + ` in a commen
 	}
 }
 
+func TestGetMessageNotFullyApprovedAndAssigneeIsUsefulApprover(t *testing.T) {
+	ap := NewApprovers(
+		Owners{
+			filenames: []string{"a/a.go", "b/b.go"},
+			repo: createFakeRepo(map[string]sets.Set[string]{
+				"a": sets.New[string]("Alice"),
+				"b": sets.New[string]("Bill"),
+			}),
+			log: logrus.WithField("plugin", "some_plugin"),
+		},
+	)
+	ap.AddAssignees("Bill") // Bill is an approver for b/b.go and assignee.
+	ap.AddApprover("Alice", "REFERENCE", false)
+
+	want := `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
+
+This pull-request has been approved by: *<a href="REFERENCE" title="Approved">Alice</a>*
+**Once this PR has been reviewed and has the lgtm label**, please ask for approval from [bill](https://github.com/bill). For more information see [the Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+
+The full list of commands accepted by this bot can be found [here](https://go.k8s.io/bot-commands?repo=org%2Frepo).
+
+<details open>
+Needs approval from an approver in each of these files:
+
+- ~~[a/OWNERS](https://github.com/org/repo/blob/master/a/OWNERS)~~ [Alice]
+- **[b/OWNERS](https://github.com/org/repo/blob/master/b/OWNERS)**
+
+Approvers can indicate their approval by writing ` + "`/approve`" + ` in a comment
+Approvers can cancel approval by writing ` + "`/approve cancel`" + ` in a comment
+</details>
+<!-- META={"approvers":["bill"]} -->`
+	if got := GetMessage(ap, &url.URL{Scheme: "https", Host: "github.com"}, "https://go.k8s.io/bot-commands", "https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process", "org", "repo", "master"); got == nil {
+		t.Error("GetMessage() failed")
+	} else if *got != want {
+		t.Errorf("GetMessage() = %+v, want = %+v", *got, want)
+	}
+}
+
 func TestGetMessageNoneApproved(t *testing.T) {
 	ap := NewApprovers(
 		Owners{
@@ -918,7 +956,7 @@ func TestGetMessageNoneApproved(t *testing.T) {
 	want := `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
 
 This pull-request has been approved by: *<a href="REFERENCE" title="Author self-approved">John</a>*
-**Once this PR has been reviewed and has the lgtm label**, please assign [alice](https://github.com/alice), [bill](https://github.com/bill) for approval. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+**Once this PR has been reviewed and has the lgtm label**, please assign [alice](https://github.com/alice), [bill](https://github.com/bill) for approval. For more information see [the Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
 
 *No associated issue*. Update pull-request body to add a reference to an issue, or get approval with ` + "`/approve no-issue`" + `
 
@@ -1045,7 +1083,7 @@ func TestGetMessageMDOwners(t *testing.T) {
 	want := `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
 
 This pull-request has been approved by: *<a href="REFERENCE" title="Author self-approved">John</a>*
-**Once this PR has been reviewed and has the lgtm label**, please assign [alice](https://github.com/alice), [doctor](https://github.com/doctor) for approval. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+**Once this PR has been reviewed and has the lgtm label**, please assign [alice](https://github.com/alice), [doctor](https://github.com/doctor) for approval. For more information see [the Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
 
 *No associated issue*. Update pull-request body to add a reference to an issue, or get approval with ` + "`/approve no-issue`" + `
 
@@ -1085,7 +1123,7 @@ func TestGetMessageDifferentGitHubLink(t *testing.T) {
 	want := `[APPROVALNOTIFIER] This PR is **NOT APPROVED**
 
 This pull-request has been approved by: *<a href="REFERENCE" title="Author self-approved">John</a>*
-**Once this PR has been reviewed and has the lgtm label**, please assign [alice](https://github.com/alice), [doctor](https://github.com/doctor) for approval. For more information see [the Kubernetes Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
+**Once this PR has been reviewed and has the lgtm label**, please assign [alice](https://github.com/alice), [doctor](https://github.com/doctor) for approval. For more information see [the Code Review Process](https://git.k8s.io/community/contributors/guide/owners.md#the-code-review-process).
 
 *No associated issue*. Update pull-request body to add a reference to an issue, or get approval with ` + "`/approve no-issue`" + `
 

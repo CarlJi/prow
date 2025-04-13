@@ -23,6 +23,7 @@ import (
 	"path"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -146,6 +147,18 @@ type ExternalPlugin struct {
 	Events []string `json:"events,omitempty"`
 }
 
+type ContextMatch struct {
+	// Context name of the context to match on, defaults to "tide"
+	Context string `json:"context,omitempty"`
+	// Description regular expression to match the context description, defaults to
+	// "Not mergeable. (PullRequest is missing sufficient approving GitHub review\(s\)|Needs (lgtm|approved) label)"
+	Description string `json:"description,omitempty"`
+	// Compiled description
+	DescriptionRe *regexp.Regexp `json:"-"`
+	// State is the state we want the context to be in before requesting reviews, e.g. "pending"
+	State string `json:"state,omitempty"`
+}
+
 // Blunderbuss defines configuration for the blunderbuss plugin.
 type Blunderbuss struct {
 	// ReviewerCount is the minimum number of reviewers to request
@@ -171,6 +184,9 @@ type Blunderbuss struct {
 	// This is useful when a bot user or admin opens a PR that will be
 	// merged regardless of approvals.
 	IgnoreAuthors []string `json:"ignore_authors,omitempty"`
+	// WaitForStatus specifies whether to request reviews if the tide status indicates that
+	// the tests have passed but there are insufficient pull request reviews.
+	WaitForStatus *ContextMatch `json:"wait_for_status,omitempty"`
 }
 
 // Owners contains configuration related to handling OWNERS files.
@@ -726,6 +742,10 @@ type CherryPickApproved struct {
 	BranchRe     *regexp.Regexp `json:"-"`
 	// Approvers is the list of GitHub logins allowed to approve a cherry-pick.
 	Approvers []string `json:"approvers,omitempty"`
+	// AllowMissingApprovedLabel allows approving cherry-pick without the approved label.
+	AllowMissingApprovedLabel bool `json:"allow_missing_approved_label,omitempty"`
+	// AllowMissingLGTMLabel allows approving cherry-pick without the lgtm label.
+	AllowMissingLGTMLabel bool `json:"allow_missing_lgtm_label,omitempty"`
 }
 
 // CherryPickUnapproved is the config for the cherrypick-unapproved plugin.
@@ -1067,6 +1087,17 @@ func (c *Configuration) setDefaults() {
 		c.Blunderbuss.ReviewerCount = new(int)
 		*c.Blunderbuss.ReviewerCount = defaultBlunderbussReviewerCount
 	}
+	if c.Blunderbuss.WaitForStatus != nil {
+		if c.Blunderbuss.WaitForStatus.Context == "" {
+			c.Blunderbuss.WaitForStatus.Context = "tide"
+		}
+		if c.Blunderbuss.WaitForStatus.State == "" {
+			c.Blunderbuss.WaitForStatus.State = "pending"
+		}
+		if c.Blunderbuss.WaitForStatus.Description == "" {
+			c.Blunderbuss.WaitForStatus.Description = "Not mergeable. (PullRequest is missing sufficient approving GitHub review\\(s\\)|Needs (lgtm|approved|approved, lgtm) labels?)\\.?"
+		}
+	}
 	for i := range c.Triggers {
 		c.Triggers[i].SetDefaults()
 	}
@@ -1102,15 +1133,20 @@ func (c *Configuration) setDefaults() {
 }
 
 // validatePluginsDupes will return an error if there are duplicated plugins.
+// ExcludedRepos will be ignored for dupe checking.
 // It is sometimes a sign of misconfiguration and is always useless for a
 // plugin to be specified at both the org and repo levels.
 func validatePluginsDupes(plugins Plugins) error {
 	var errors []error
-	for repo, repoConfig := range plugins {
-		if strings.Contains(repo, "/") {
-			org := strings.Split(repo, "/")[0]
-			if dupes := findDuplicatedPluginConfig(repoConfig.Plugins, plugins[org].Plugins); len(dupes) > 0 {
-				errors = append(errors, fmt.Errorf("plugins %v are duplicated for %s and %s", dupes, repo, org))
+	for orgRepo, repoConfig := range plugins {
+		if strings.Contains(orgRepo, "/") {
+			split := strings.Split(orgRepo, "/")
+			org, repo := split[0], split[1]
+			orgConfig := plugins[org]
+			if !slices.Contains(orgConfig.ExcludedRepos, repo) {
+				if dupes := findDuplicatedPluginConfig(repoConfig.Plugins, orgConfig.Plugins); len(dupes) > 0 {
+					errors = append(errors, fmt.Errorf("plugins %v are duplicated for %s and %s", dupes, repo, org))
+				}
 			}
 		}
 	}
@@ -1379,6 +1415,13 @@ func compileRegexpsAndDurations(pc *Configuration) error {
 			return fmt.Errorf("failed to compile grace period duration: %q, error: %w", rs[i].GracePeriod, err)
 		}
 		rs[i].GracePeriodDuration = dur
+	}
+
+	if pc.Blunderbuss.WaitForStatus != nil {
+		pc.Blunderbuss.WaitForStatus.DescriptionRe, err = regexp.Compile(pc.Blunderbuss.WaitForStatus.Description)
+		if err != nil {
+			return fmt.Errorf("failed to compile blunderbuss wait for context description regular expression: %q, error: %w", pc.Blunderbuss.WaitForStatus.Description, err)
+		}
 	}
 	return nil
 }

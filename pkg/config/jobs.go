@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -114,7 +114,7 @@ type JobBase struct {
 	// Spec is the Kubernetes pod spec used if Agent is kubernetes.
 	Spec *v1.PodSpec `json:"spec,omitempty"`
 	// PipelineRunSpec is the tekton pipeline spec used if Agent is tekton-pipeline.
-	PipelineRunSpec *pipelinev1beta1.PipelineRunSpec `json:"pipeline_run_spec,omitempty"`
+	PipelineRunSpec *pipelinev1.PipelineRunSpec `json:"pipeline_run_spec,omitempty"`
 	// TektonPipelineRunSpec is the versioned tekton pipeline spec used if Agent is tekton-pipeline.
 	TektonPipelineRunSpec *prowapi.TektonPipelineRunSpec `json:"tekton_pipeline_run_spec,omitempty"`
 	// Annotations are unused by prow itself, but provide a space to configure other automation.
@@ -161,8 +161,8 @@ func (jb JobBase) HasPipelineRunSpec() bool {
 	return false
 }
 
-func (jb JobBase) GetPipelineRunSpec() (*pipelinev1beta1.PipelineRunSpec, error) {
-	var found *pipelinev1beta1.PipelineRunSpec
+func (jb JobBase) GetPipelineRunSpec() (*pipelinev1.PipelineRunSpec, error) {
+	var found *pipelinev1.PipelineRunSpec
 	if jb.TektonPipelineRunSpec != nil {
 		found = jb.TektonPipelineRunSpec.V1Beta1
 	}
@@ -266,6 +266,20 @@ type Postsubmit struct {
 	JenkinsSpec *JenkinsSpec `json:"jenkins_spec,omitempty"`
 }
 
+// Retry defines the configuration for retrying failed prowjobs.
+type Retry struct {
+	// RunAll retries will not stop on first successful run.
+	// Failed job will always cause Attempts retries to be executed,
+	// not waiting on previous result, respecting Interval only.
+	RunAll bool `json:"run_all,omitempty"`
+	// Attempts specifies the maximum number of retry attempts allowed.
+	Attempts int `json:"attempts,omitempty"`
+	// Interval defines the wait duration between consecutive retry attempts.
+	Interval string `json:"interval,omitempty"`
+
+	interval time.Duration
+}
+
 // Periodic runs on a timer.
 type Periodic struct {
 	JobBase
@@ -282,6 +296,8 @@ type Periodic struct {
 	// Tags for config entries
 	Tags []string `json:"tags,omitempty"`
 
+	Retry *Retry `json:"retry,omitempty"`
+
 	interval         time.Duration
 	minimum_interval time.Duration
 }
@@ -291,6 +307,16 @@ type JenkinsSpec struct {
 	// Job is managed by the GH branch source plugin
 	// and requires a specific path
 	GitHubBranchSourceJob bool `json:"github_branch_source_job,omitempty"`
+}
+
+// SetInterval updates interval, the frequency duration it runs.
+func (r *Retry) SetInterval(d time.Duration) {
+	r.interval = d
+}
+
+// GetInterval returns interval, the frequency duration it runs.
+func (r *Retry) GetInterval() time.Duration {
+	return r.interval
 }
 
 // SetInterval updates interval, the frequency duration it runs.
@@ -697,6 +723,22 @@ func (c *JobConfig) AllPeriodics() []Periodic {
 	}
 
 	return listPeriodic(c.Periodics)
+}
+
+func (c *JobConfig) PeriodicsMatchingExtraRefs(org, repo string) []Periodic {
+	filterPeriodics := func(ps []Periodic) []Periodic {
+		var res []Periodic
+		for _, p := range ps {
+			for _, ref := range p.ExtraRefs {
+				if ref.Org == org && ref.Repo == repo {
+					res = append(res, p)
+				}
+			}
+		}
+		return res
+	}
+
+	return filterPeriodics(c.Periodics)
 }
 
 // ClearCompiledRegexes removes compiled regexes from the presubmits,

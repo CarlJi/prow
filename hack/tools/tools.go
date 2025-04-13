@@ -41,14 +41,8 @@ import (
 	// test runner
 	_ "gotest.tools/gotestsum"
 
-	// bazel-related tools
-	_ "github.com/bazelbuild/buildtools/buildozer"
-
 	_ "github.com/client9/misspell/cmd/misspell"
 
 	// image builder
 	_ "github.com/google/ko"
-
-	// caching
-	_ "github.com/sethvargo/gcs-cacher"
 )

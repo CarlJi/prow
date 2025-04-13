@@ -41,7 +41,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/sirupsen/logrus"
-	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"gopkg.in/robfig/cron.v2"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -2435,6 +2435,14 @@ func (c Config) validatePeriodics(periodics []Periodic) error {
 			periodics[j].interval = d
 		}
 
+		if p.Retry != nil {
+			d, err := time.ParseDuration(periodics[j].Retry.Interval)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("cannot parse Retry duration for %s: %w", periodics[j].Name, err))
+			}
+			periodics[j].interval = d
+		}
+
 		if p.MinimumInterval != "" {
 			d, err := time.ParseDuration(periodics[j].MinimumInterval)
 			if err != nil {
@@ -2933,7 +2941,7 @@ func resolvePresets(name string, labels map[string]string, spec *v1.PodSpec, pre
 
 var ReProwExtraRef = regexp.MustCompile(`PROW_EXTRA_GIT_REF_(\d+)`)
 
-func ValidatePipelineRunSpec(jobType prowapi.ProwJobType, extraRefs []prowapi.Refs, spec *pipelinev1beta1.PipelineRunSpec) error {
+func ValidatePipelineRunSpec(jobType prowapi.ProwJobType, extraRefs []prowapi.Refs, spec *pipelinev1.PipelineRunSpec) error {
 	if spec == nil {
 		return nil
 	}

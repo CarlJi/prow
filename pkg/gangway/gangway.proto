@@ -2,6 +2,7 @@ syntax = "proto3";
 
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
 
 option go_package = "sigs.k8s.io/prow/pkg/gangway";
 
@@ -36,7 +37,7 @@ service Prow {
       get: "/v1/executions"
     };
   }
-  rpc BulkJobStatusChange(BulkJobStatusChangeRequest) returns (JobsAffected) {
+  rpc BulkJobStatusChange(BulkJobStatusChangeRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       custom: {
         kind: "POST",
@@ -72,11 +73,6 @@ message ListJobExecutionsRequest {
   JobExecutionStatus status = 2;  // Mapped to URL query parameter `status`.
 }
 
-message JobsAffected {
-  int32 count = 1;
-  repeated JobExecution job_executions = 2;
-}
-
 message JobExecutions {
   repeated JobExecution job_execution = 1;
 }
@@ -91,6 +87,7 @@ message JobExecution {
   string gcs_path = 7;
   google.protobuf.Timestamp create_time = 8;
   google.protobuf.Timestamp completion_time = 9;
+  string job_url = 10;
 }
 
 // JobExecutionStatus is a 1:1 translation of the existing "ProwJobState" type
